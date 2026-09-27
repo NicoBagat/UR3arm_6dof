@@ -65,10 +65,24 @@ class ArmModel:
     payload: float = 0.0                       # kg carried at the tool tip
     tool_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)  # flange->TCP (m)
     gravity: float = 9.80665                   # m/s^2
+    home_deg: tuple[float, ...] = ()           # default/ready pose per joint (deg)
 
     @property
     def dof(self) -> int:
         return len(self.joints)
+
+    def home_q(self) -> list[float]:
+        """Home/ready pose in radians, one per joint. Falls back to all-zeros
+        when home_deg is unset or the wrong length."""
+        if len(self.home_deg) == self.dof:
+            return [radians(d) for d in self.home_deg]
+        return [0.0] * self.dof
+
+    def home_q_deg(self) -> list[float]:
+        """Home/ready pose in degrees, one per joint (all-zeros fallback)."""
+        if len(self.home_deg) == self.dof:
+            return list(self.home_deg)
+        return [0.0] * self.dof
 
     def dh_table(self) -> list[tuple[float, float, float, float]]:
         """(a, alpha, d, theta_offset) rows, one per joint, in order."""
@@ -126,8 +140,72 @@ REFERENCE_ARM = ArmModel(
     ),
     payload=0.5,                       # <-- the 500 g target
     tool_offset=(0.0, 0.0, 0.08),      # 80 mm gripper reach past the flange
+    home_deg=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),   # home = all-zeros
 )
 
 
+# ---------------------------------------------------------------------------
+# IRB 1300-7/1.4 reference (reconstructed standard DH).
+#
+# ABB does NOT publish DH tables and does not use DH internally (it uses
+# robtarget / wobj / tooldata). The numbers below are RECONSTRUCTED from the
+# published ~1.4 m reach and the standard 6R spherical-wrist decomposition:
+# correct in structure and convention (alpha pattern -90,0,-90,+90,-90,0 and
+# the -90 deg offset on J2), close in proportion, to be trued-up against the
+# ABB drawing (doc 3HAC070393) if exact figures are needed.
+#
+# Masses / servo torques stay in the STS3215 class -- a real IRB 1300 uses far
+# larger drives. This preset is a GEOMETRY TEMPLATE to scale down for the 500 g
+# hobby build, not a model of the real industrial robot.
+# ---------------------------------------------------------------------------
+IRB1300_7_14 = ArmModel(
+    name="IRB 1300-7/1.4 (reconstructed standard DH, geometry template)",
+    joints=(
+        JointSpec("J1_base", a=0.150, alpha=-pi / 2, d=0.544, theta_offset=0.0,
+                  q_min=radians(-170), q_max=radians(170),
+                  servo_model="STS3215", servo_stall_torque=STS3215_STALL),
+        JointSpec("J2_shoulder", a=0.575, alpha=0.0, d=0.0, theta_offset=-pi / 2,
+                  q_min=radians(-90), q_max=radians(150),
+                  servo_model="STS3215x2", servo_stall_torque=2 * STS3215_STALL),
+        JointSpec("J3_elbow", a=0.150, alpha=-pi / 2, d=0.0, theta_offset=0.0,
+                  q_min=radians(-110), q_max=radians(70),
+                  servo_model="STS3215", servo_stall_torque=STS3215_STALL),
+        JointSpec("J4_wrist_roll", a=0.0, alpha=pi / 2, d=0.625, theta_offset=0.0,
+                  q_min=radians(-180), q_max=radians(180),
+                  servo_model="STS3215", servo_stall_torque=STS3215_STALL),
+        JointSpec("J5_wrist_pitch", a=0.0, alpha=-pi / 2, d=0.0, theta_offset=0.0,
+                  q_min=radians(-125), q_max=radians(125),
+                  servo_model="STS3215", servo_stall_torque=STS3215_STALL),
+        JointSpec("J6_flange", a=0.0, alpha=0.0, d=0.110, theta_offset=0.0,
+                  q_min=radians(-180), q_max=radians(180),
+                  servo_model="STS3215", servo_stall_torque=STS3215_STALL),
+    ),
+    link_masses=(
+        LinkMass(at_joint=1, mass=0.30, com=(0.29, 0.0, 0.0)),   # upper arm
+        LinkMass(at_joint=2, mass=0.25, com=(0.0, 0.0, 0.31)),   # forearm
+        LinkMass(at_joint=4, mass=0.15, com=(0.0, 0.0, 0.05)),   # wrist cluster
+    ),
+    payload=0.5,
+    tool_offset=(0.0, 0.0, 0.08),
+    home_deg=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+)
+
+
+# preset registry: name -> base model. "custom" is the original placeholder arm.
+PRESETS: dict[str, "ArmModel"] = {
+    "custom": REFERENCE_ARM,
+    "IRB 1300-7/1.4": IRB1300_7_14,
+}
+
+
+def preset(name: str) -> ArmModel:
+    """Look up a preset base arm by name; falls back to the reference arm."""
+    return PRESETS.get(name, REFERENCE_ARM)
+
+
 def default_arm() -> ArmModel:
-    return REFERENCE_ARM
+    """The default arm the app opens with: IRB 1300-7/1.4, with any saved
+    config_default.json applied on top (written by the GUI's 'Save as
+    default'). Absent or bad, the built-in IRB 1300 preset is returned."""
+    from .config import load_default   # lazy: config.py imports this module
+    return load_default(IRB1300_7_14)
