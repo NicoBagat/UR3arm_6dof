@@ -15,3 +15,6 @@ Thumbs.db
 
 # Fonts vendored from the private design-scheme repo (licensed separately)
 arm6dof/_fonts/
+
+# Local user tuning saved by the GUI's "Save as default" (per-machine state)
+arm6dof/config_default.json
