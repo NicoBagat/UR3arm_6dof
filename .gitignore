@@ -18,3 +18,6 @@ arm6dof/_fonts/
 
 # Local user tuning saved by the GUI's "Save as default" (per-machine state)
 arm6dof/config_default.json
+
+# Claude Code local context — never commit
+CLAUDE.md
