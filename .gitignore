@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Fonts vendored from the private design-scheme repo (licensed separately)
+arm6dof/_fonts/
+
+# Local user tuning saved by the GUI's "Save as default" (per-machine state)
+arm6dof/config_default.json
